@@ -1,0 +1,53 @@
+#!/usr/bin/env node
+/* 
+ * Process npm audit data.
+ *
+ * Return a non-zero exit value if auditing fails.
+ *
+ * Note: `npm audit` uses package-lock or npm-shrinkwrap data, not
+ * package.json.  To generate updated package lock files run `npm install`.
+ *
+ */   
+
+const os = require('os');
+const { spawn } = require('child_process')
+
+const isWin = os.platform() === 'win32'
+const child = spawn(isWin ? 'npm.cmd' : 'npm', ['audit', '--json'])
+
+let data  = ''
+
+child.on('error', error => {
+  console.error('command failed', error)
+  process.exit(1)
+})
+
+child.stdout.setEncoding('utf8')
+
+child.stdout.on('data', chunk => {
+  data += chunk
+})
+
+child.stdout.on('end', () => {
+  const advisories = filter(JSON.parse(data))
+  if (advisories.length) {
+    console.log(advisories)
+    process.exit(1)
+  }
+})
+
+const filter = report => {
+  const advisories = []
+  // find advisories where severity is high and not a dev dependency
+  Object.keys(report.advisories).forEach(key => {
+    const adv = report.advisories[key]
+    if (adv.severity === 'high' || adv.severity === 'critical') {
+      adv.findings.forEach(find => {
+        if (!find.dev) {
+          advisories.push(adv)
+	}
+      })
+    }
+  })
+  return advisories
+}
