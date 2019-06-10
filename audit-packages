@@ -1,13 +1,18 @@
 #!/usr/bin/env node
-/* 
+/*
  * Process npm audit data.
  *
- * Return a non-zero exit value if auditing fails.
+ * Return a non-zero exit value if auditing fails and zero otherwise.  With no
+ * argument report critical advisories only.
  *
  * Note: `npm audit` uses package-lock or npm-shrinkwrap data, not
  * package.json.  To generate updated package lock files run `npm install`.
  *
- */   
+ * Usage:
+ *
+ *   ./audit-packages [critical,high,moderate,low]
+ *
+ */
 
 const os = require('os');
 const { spawn } = require('child_process')
@@ -29,24 +34,29 @@ child.stdout.on('data', chunk => {
 })
 
 child.stdout.on('end', () => {
-  const advisories = filter(JSON.parse(data))
+  const advisories = filter(JSON.parse(data), process.argv[2])
   if (advisories.length) {
-    console.log(advisories)
+    console.log(JSON.stringify(advisories))
     process.exit(1)
   }
 })
 
-const filter = report => {
+// return advisories filtering on severity
+const filter = (report, severity = 'critical') => {
   const advisories = []
-  // find advisories where severity is high and not a dev dependency
+  const severityMap = {
+    'critical': 1,
+    'high': 2,
+    'moderate': 3,
+    'low': 4
+  }
+  if (typeof severityMap[severity] === 'undefined') {
+    throw(new Error(`severity value not supported: ${severity}`))
+  }
   Object.keys(report.advisories).forEach(key => {
     const adv = report.advisories[key]
-    if (adv.severity === 'high' || adv.severity === 'critical') {
-      adv.findings.forEach(find => {
-        if (!find.dev) {
-          advisories.push(adv)
-	}
-      })
+    if (severityMap[adv.severity] <= severityMap[severity]) {
+      advisories.push(adv)
     }
   })
   return advisories
